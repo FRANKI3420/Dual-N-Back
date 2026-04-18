@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual N-Back Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .grid-cell {
+            transition: all 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 900;
+        }
+
+        .active-cell {
+            box-shadow: 0 0 30px currentColor;
+            transform: scale(0.95);
+        }
+
+        .btn-active {
+            background-color: #1e293b !important;
+            /* より濃い色に */
+            border-bottom-width: 0px !important;
+            transform: translateY(4px);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center p-6 select-none">
+
+    <div
+        class="w-full max-w-md flex justify-between items-center mb-8 bg-slate-800 p-5 rounded-2xl border border-slate-700">
+        <div class="flex-1">
+            <h1 id="mode-title" class="text-xl font-bold text-blue-400">Loading...</h1>
+            <p id="life-display" class="text-red-500 font-bold text-sm mt-1">LIFE: ❤️❤️❤️❤️❤️</p>
+        </div>
+        <div class="text-right font-mono">
+            <p class="text-[10px] text-slate-400">SCORE</p>
+            <p id="match-count" class="text-green-400 font-bold text-xl">0</p>
+        </div>
+    </div>
+
+    <div id="grid" class="grid grid-cols-3 gap-3 w-full max-w-[340px] aspect-square mb-10"></div>
+
+    <div id="controls" class="grid grid-cols-2 gap-4 w-full max-w-md">
+        <button id="pos-btn"
+            class="bg-slate-800 border-b-4 border-blue-600 p-5 rounded-xl active:translate-y-1 active:border-b-0 font-bold hover:bg-slate-700">📍
+            位置 (A)</button>
+        <button id="letter-btn"
+            class="bg-slate-800 border-b-4 border-purple-600 p-5 rounded-xl active:translate-y-1 active:border-b-0 font-bold hover:bg-slate-700">🔤
+            文字 (L)</button>
+        <button id="color-btn"
+            class="hidden bg-slate-800 border-b-4 border-red-600 p-5 rounded-xl active:translate-y-1 active:border-b-0 col-span-2 font-bold hover:bg-slate-700">🎨
+            色 (S)</button>
+    </div>
+
+    <button id="start-btn" class="mt-10 px-12 py-3 bg-blue-600 rounded-full font-bold shadow-lg hover:bg-blue-500">START
+        TRAINING</button>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const N = parseInt(params.get('n')) || 2;
+        const useColor = params.get('color') === 'true';
+        const INTERVAL = 3000;
+        const MAX_MISSES = 5;
+
+        document.getElementById('mode-title').innerText = `${useColor ? 'Triple' : 'Dual'} ${N}-Back`;
+        if (useColor) document.getElementById('color-btn').classList.remove('hidden');
+
+        const LETTERS = ['A', 'B', 'C', 'D', 'E', 'H', 'K', 'L', 'R'];
+        const COLORS = ['#ef4444', '#22c55e', '#eab308', '#ec4899', '#ffffff'];
+
+        const grid = document.getElementById('grid');
+        for (let i = 0; i < 9; i++) {
+            const cell = document.createElement('div');
+            cell.id = `cell-${i}`;
+            cell.className = 'grid-cell bg-slate-800 border border-slate-700 rounded-lg';
+            grid.appendChild(cell);
+        }
+        let history = [], gameActive = false, timer = null;
+        let stats = { score: 0, misses: 0 };
+        let currentInputs = { pos: false, letter: false, color: false };
+
+        function startGame() {
+            if (gameActive) return;
+            gameActive = true;
+            document.getElementById('start-btn').style.display = 'none';
+
+            // 初回の実行
+            tick();
+            // 3秒ごと（INTERVAL）に次の刺激へ
+            timer = setInterval(tick, INTERVAL);
+        }
+
+        // ボタンの状態を視覚的に更新する関数
+        function updateButtonVisuals() {
+            document.getElementById('pos-btn').classList.toggle('btn-active', currentInputs.pos);
+            document.getElementById('letter-btn').classList.toggle('btn-active', currentInputs.letter);
+            document.getElementById('color-btn').classList.toggle('btn-active', currentInputs.color);
+        }
+
+
+
+        document.getElementById('pos-btn').addEventListener('click', () => handleInput('pos'));
+        document.getElementById('letter-btn').addEventListener('click', () => handleInput('letter'));
+        document.getElementById('color-btn').addEventListener('click', () => handleInput('color'));
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'a') handleInput('pos');
+            if (key === 'l') handleInput('letter');
+            if (key === 's') handleInput('color');
+        });
+
+        // 入力ハンドラー：トグルではなく「押した」というフラグを立てるのみ
+        const handleInput = (type) => {
+            if (!gameActive) return;
+            currentInputs[type] = true; // 常に true に固定
+            document.getElementById(`${type}-btn`).classList.add('btn-active');
+        };
+
+        function tick() {
+            // --- 1. 判定フェーズ (前回のターンが終了したタイミングで実行) ---
+            // N回目までは比較対象がないためスキップ
+            if (history.length > N) {
+                const lastStimulus = history[history.length - 1];
+                const targetStimulus = history[history.length - 1 - N];
+
+                // 期待される正解（Matchしているかどうか）
+                const matchPos = (lastStimulus.pos === targetStimulus.pos);
+                const matchLetter = (lastStimulus.letter === targetStimulus.letter);
+                const matchColor = useColor ? (lastStimulus.color === targetStimulus.color) : true;
+
+                // 判定：入力フラグとMatchフラグが完全に一致しているか
+                const isPosCorrect = (currentInputs.pos === matchPos);
+                const isLetterCorrect = (currentInputs.letter === matchLetter);
+                const isColorCorrect = useColor ? (currentInputs.color === matchColor) : true;
+
+                if (isPosCorrect && isLetterCorrect && isColorCorrect) {
+                    stats.score++;
+                } else {
+                    stats.misses++;
+                }
+
+                updateUI();
+                if (stats.misses >= MAX_MISSES) return endGame();
+            }
+
+            // --- 2. リセット処理 (判定完了後に「必ず」実行) ---
+            currentInputs = { pos: false, letter: false, color: false };
+            ['pos', 'letter', 'color'].forEach(type => {
+                document.getElementById(`${type}-btn`).classList.remove('btn-active');
+            });
+
+            // --- 3. 新しい刺激の生成 (PROB 0.50) ---
+            const PROB = 0.50;
+
+            // まずは完全にランダムな値を生成
+            let nextPos = Math.floor(Math.random() * 9);
+            let nextLetter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+            let nextColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+            // 履歴が N個以上ある場合のみ、確率で「N個前」と同じ値に書き換える
+            if (history.length >= N) {
+                const target = history[history.length - N]; // 正真正銘のN個前
+
+                if (Math.random() < PROB) nextPos = target.pos;
+                if (Math.random() < PROB) nextLetter = target.letter;
+                if (useColor && Math.random() < PROB) nextColor = target.color;
+            }
+
+            // 確定した値を履歴に追加
+            history.push({ pos: nextPos, letter: nextLetter, color: nextColor });
+
+            // --- 4. 画面表示 ---
+            document.querySelectorAll('.grid-cell').forEach(c => {
+                c.innerText = "";
+                c.classList.remove('active-cell');
+            });
+
+            const cell = document.getElementById(`cell-${nextPos}`);
+            cell.innerText = nextLetter;
+            cell.style.color = useColor ? nextColor : '#ffffff';
+            cell.classList.add('active-cell');
+
+            // 1秒後に消去
+            setTimeout(() => {
+                cell.classList.remove('active-cell');
+                cell.innerText = "";
+            }, 1000);
+        }
+
+        function updateUI() {
+            document.getElementById('match-count').innerText = stats.score;
+            const hearts = "❤️".repeat(Math.max(0, MAX_MISSES - stats.misses));
+            const dead = "🖤".repeat(stats.misses);
+            document.getElementById('life-display').innerText = `LIFE: ${hearts}${dead}`;
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(timer);
+            saveHighScore();
+            alert(`GAME OVER\nScore: ${stats.score}`);
+            location.href = "index.html";
+        }
+
+        function saveHighScore() {
+            const modeKey = `${useColor ? 'Triple' : 'Dual'}-${N}`;
+            const highScores = JSON.parse(localStorage.getItem('nback_high_scores') || '{}');
+
+            if (!highScores[modeKey] || stats.score > highScores[modeKey]) {
+                highScores[modeKey] = stats.score;
+                localStorage.setItem('nback_high_scores', JSON.stringify(highScores));
+            }
+        }
+
+        document.getElementById('pos-btn').addEventListener('click', () => currentInputs.pos = true);
+        document.getElementById('letter-btn').addEventListener('click', () => currentInputs.letter = true);
+        document.getElementById('color-btn').addEventListener('click', () => currentInputs.color = true);
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'a') currentInputs.pos = true;
+            if (key === 'l') currentInputs.letter = true;
+            if (key === 's') currentInputs.color = true;
+        });
+        document.getElementById('start-btn').addEventListener('click', startGame);
+    </script>
+</body>
+
+</html>

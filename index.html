@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N-Back Menu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center p-8">
+    <h1 class="text-4xl font-black text-blue-500 mb-2">Dual N-Back</h1>
+    <p class="text-slate-400 mb-10 tracking-widest text-sm uppercase italic">Professional Brain Training</p>
+
+    <div class="w-full max-w-2xl">
+        <h2 class="text-xl font-bold mb-6 border-l-4 border-blue-500 pl-3">Select Level & High Scores</h2>
+        <div id="level-list" class="grid grid-cols-1 gap-3">
+        </div>
+    </div>
+
+    <script>
+        const levels = [
+            { n: 1, color: false, title: "Level 1" },
+            { n: 2, color: false, title: "Level 2" },
+            { n: 3, color: false, title: "Level 3" },
+            { n: 4, color: false, title: "Level 4" },
+            { n: 1, color: true, title: "Level 5 (Triple)" },
+            { n: 2, color: true, title: "Level 6 (Triple)" },
+            { n: 3, color: true, title: "Level 7 (Triple)" },
+            { n: 4, color: true, title: "Level 8 (Triple)" },
+            { n: 5, color: true, title: "Level 9 (Triple)" },
+            { n: 6, color: true, title: "Level 10 (Triple)" },
+        ];
+
+        // 各レベルの最高スコアを取得
+        const highScores = JSON.parse(localStorage.getItem('nback_high_scores') || '{}');
+
+        const listContainer = document.getElementById('level-list');
+        levels.forEach(lv => {
+            const modeKey = `${lv.color ? 'Triple' : 'Dual'}-${lv.n}`;
+            const best = highScores[modeKey] || 0;
+
+            const btn = document.createElement('a');
+            btn.href = `game.html?n=${lv.n}&color=${lv.color}`;
+            btn.className = "bg-slate-800 border-2 border-slate-700 p-4 rounded-xl hover:border-blue-500 hover:bg-slate-700 transition-all flex justify-between items-center group";
+            btn.innerHTML = `
+                <div>
+                    <span class="font-bold text-lg group-hover:text-blue-400">${lv.title}</span>
+                    <p class="text-xs text-slate-500 font-mono italic">N = ${lv.n}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] text-slate-500 uppercase">Best Score</p>
+                    <p class="font-mono font-bold text-xl ${best > 0 ? 'text-yellow-500' : 'text-slate-600'}">${best}</p>
+                </div>
+            `;
+            listContainer.appendChild(btn);
+        });
+    </script>
+</body>
+
+</html>
